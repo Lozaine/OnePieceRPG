@@ -67,8 +67,6 @@ module.exports = {
             const characterData = {};
 
             collector.on('collect', async i => {
-                await i.deferUpdate(); // Acknowledge the interaction
-
                 if (i.isStringSelectMenu()) {
                     if (i.customId === 'race_select') {
                         characterData.race = i.values[0];
@@ -109,23 +107,55 @@ module.exports = {
                             .setStyle(TextInputStyle.Short)
                             .setRequired(true);
 
-                        const firstActionRow = new ActionRowBuilder().addComponents(nameInput);
-                        modal.addComponents(firstActionRow);
-
+                        modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
                         await i.showModal(modal);
+
+                        const submitted = await i.awaitModalSubmit({
+                            time: 60000,
+                            filter: m => m.user.id === i.user.id,
+                        }).catch(error => {
+                            // Occurs when the modal times out
+                            i.editReply({ content: 'Character creation timed out.', components: [] }).catch(console.error);
+                            return null;
+                        });
+
+                        if (submitted) {
+                            characterData.name = submitted.fields.getTextInputValue('character_name');
+
+                            const summary = `**Review Your Character:**\n` +
+                                          `- **Name:** ${characterData.name}\n` +
+                                          `- **Race:** ${characterData.race}\n` +
+                                          `- **Origin:** ${characterData.origin}\n` +
+                                          `- **Dream:** ${dreams.find(d => d.value === characterData.dream).label}\n\n` +
+                                          `Is this correct?`;
+
+                            const confirmButton = new ButtonBuilder()
+                                .setCustomId('confirm_creation')
+                                .setLabel('Confirm')
+                                .setStyle(ButtonStyle.Success);
+
+                            const cancelButton = new ButtonBuilder()
+                                .setCustomId('cancel_creation')
+                                .setLabel('Cancel')
+                                .setStyle(ButtonStyle.Danger);
+
+                            const row = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
+
+                            // Acknowledge the modal submission and update the message
+                            await submitted.update({ content: summary, components: [row] });
+                        }
                     }
                 } else if (i.isButton()) {
                     if (i.customId === 'confirm_creation') {
-                        // --- Database Insertion ---
-                        const client = await pool.connect();
+                        const dbClient = await pool.connect();
                         try {
-                            await client.query('BEGIN');
+                            await dbClient.query('BEGIN');
 
                             // Find or create player
-                            let playerResult = await client.query('SELECT id FROM players WHERE discord_id = $1', [discord_id]);
+                            let playerResult = await dbClient.query('SELECT id FROM players WHERE discord_id = $1', [discord_id]);
                             let playerId;
                             if (playerResult.rows.length === 0) {
-                                playerResult = await client.query('INSERT INTO players (discord_id) VALUES ($1) RETURNING id', [discord_id]);
+                                playerResult = await dbClient.query('INSERT INTO players (discord_id) VALUES ($1) RETURNING id', [discord_id]);
                             }
                             playerId = playerResult.rows[0].id;
 
@@ -133,27 +163,17 @@ module.exports = {
                             let stats = { str: 1, agi: 1, dur: 1, int: 1 };
                             // Apply racial bonuses
                             switch (characterData.race) {
-                                case 'Human':
-                                    stats = { str: 2, agi: 2, dur: 2, int: 2 };
-                                    break;
-                                case 'Fish-Man':
-                                    stats = { str: 3, agi: 1, dur: 2, int: 1 };
-                                    break;
-                                case 'Mink':
-                                    stats = { str: 2, agi: 3, dur: 1, int: 1 };
-                                    break;
-                                case 'Skypiean':
-                                    stats = { str: 1, agi: 2, dur: 1, int: 3 };
-                                    break;
-                                case 'Giant':
-                                    stats = { str: 5, agi: -1, dur: 3, int: 1 };
-                                    break;
+                                case 'Human': stats = { str: 2, agi: 2, dur: 2, int: 2 }; break;
+                                case 'Fish-Man': stats = { str: 3, agi: 1, dur: 2, int: 1 }; break;
+                                case 'Mink': stats = { str: 2, agi: 3, dur: 1, int: 1 }; break;
+                                case 'Skypiean': stats = { str: 1, agi: 2, dur: 1, int: 3 }; break;
+                                case 'Giant': stats = { str: 5, agi: -1, dur: 3, int: 1 }; break;
                             }
 
                             // Insert character
                             const characterQuery = 'INSERT INTO characters (player_id, name, race, origin, dream, current_location, strength, agility, durability, intelligence) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *';
                             const characterValues = [playerId, characterData.name, characterData.race, characterData.origin, characterData.dream, characterData.origin, stats.str, stats.agi, stats.dur, stats.int];
-                            const newCharacter = await client.query(characterQuery, characterValues);
+                            const newCharacter = await dbClient.query(characterQuery, characterValues);
                             const characterId = newCharacter.rows[0].id;
 
                             // --- Assign Initial Quest ---
@@ -165,56 +185,31 @@ module.exports = {
                             };
                             const questTitle = originQuestMap[characterData.origin];
                             if (questTitle) {
-                                const questResult = await client.query('SELECT id FROM quests WHERE title = $1', [questTitle]);
+                                const questResult = await dbClient.query('SELECT id FROM quests WHERE title = $1', [questTitle]);
                                 if (questResult.rows.length > 0) {
                                     const questId = questResult.rows[0].id;
-                                    await client.query(
+                                    await dbClient.query(
                                         'INSERT INTO character_quests (character_id, quest_id, status) VALUES ($1, $2, $3)',
                                         [characterId, questId, 'In Progress']
                                     );
                                 }
                             }
 
-                            await client.query('COMMIT');
-
-                            await i.editReply({ content: `Welcome, **${characterData.name}**! Your adventure in the world of One Piece begins now! Your journey starts in **${characterData.origin}**. May you achieve your dream of becoming the **${characterData.dream}**!\n\n**New Quest Started:** ${questTitle}`, components: [] });
+                            await dbClient.query('COMMIT');
+                            const successMessage = `Welcome, **${characterData.name}**! Your adventure in the world of One Piece begins now! Your journey starts in **${characterData.origin}**. May you achieve your dream of becoming the **${characterData.dream}**!\n\n**New Quest Started:** ${questTitle}`;
+                            await i.update({ content: successMessage, components: [] });
                             collector.stop();
 
                         } catch (err) {
-                            await client.query('ROLLBACK');
+                            await dbClient.query('ROLLBACK');
                             console.error('Error during final character creation:', err);
-                            await i.editReply({ content: 'There was a database error. Please try again.', components: [] });
+                            await i.update({ content: 'There was a database error. Please try again.', components: [] });
                         } finally {
-                            client.release();
+                            dbClient.release();
                         }
                     } else if (i.customId === 'cancel_creation') {
-                        await i.editReply({ content: 'Character creation cancelled.', components: [] });
+                        await i.update({ content: 'Character creation cancelled.', components: [] });
                         collector.stop();
-                    }
-                } else if (i.isModalSubmit()) {
-                     if (i.customId === 'name_modal') {
-                        characterData.name = i.fields.getTextInputValue('character_name');
-
-                        const summary = `**Review Your Character:**\n` +
-                                      `- **Name:** ${characterData.name}\n` +
-                                      `- **Race:** ${characterData.race}\n` +
-                                      `- **Origin:** ${characterData.origin}\n` +
-                                      `- **Dream:** ${dreams.find(d => d.value === characterData.dream).label}\n\n` +
-                                      `Is this correct?`;
-
-                        const confirmButton = new ButtonBuilder()
-                            .setCustomId('confirm_creation')
-                            .setLabel('Confirm')
-                            .setStyle(ButtonStyle.Success);
-
-                        const cancelButton = new ButtonBuilder()
-                            .setCustomId('cancel_creation')
-                            .setLabel('Cancel')
-                            .setStyle(ButtonStyle.Danger);
-
-                        const row = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-
-                        await i.editReply({ content: summary, components: [row] });
                     }
                 }
             });
