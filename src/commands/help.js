@@ -13,19 +13,19 @@ module.exports = {
   async execute(interaction) {
     const helpContainer = new ContainerBuilder()
       .addChild(
-        new TextDisplayBuilder('**Welcome to the One Piece RPG!**').setHeadingLevel(1)
+        new TextDisplayBuilder().setContent('**Welcome to the One Piece RPG!**').setHeadingLevel(1)
       )
       .addChild(
         new TextDisplayBuilder('This bot allows you to embark on your own adventure in the world of One Piece. Create a character, complete quests, and become a legend!')
       )
       .addChild(
         new SectionBuilder()
-          .addChild(new TextDisplayBuilder('**Getting Started**').setHeadingLevel(3))
+          .addChild(new TextDisplayBuilder().setContent('**Getting Started**').setHeadingLevel(3))
           .addChild(new TextDisplayBuilder('Your first step is to create your character. Use the `/character-create` command to begin your journey.'))
       )
       .addChild(
         new SectionBuilder()
-          .addChild(new TextDisplayBuilder('**Core Commands**').setHeadingLevel(3))
+          .addChild(new TextDisplayBuilder().setContent('**Core Commands**').setHeadingLevel(3))
           .addChild(new TextDisplayBuilder(
             '`/character-create`: Create your unique character.\n' +
             '`/quests`: View your current quests.\n' +
@@ -41,8 +41,7 @@ module.exports = {
 
     await interaction.reply({
       body: helpContainer,
-      flags: MessageFlags.IsComponentsV2,
-      ephemeral: true,
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   },
 };
