@@ -2,11 +2,13 @@
   "name": "app",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
     "deploy": "node deploy-commands.js",
     "db:seed": "node src/db/seed.js",
+    "dev": "node src/bot.js",
+    "logs": "railway logs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
