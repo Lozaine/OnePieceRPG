@@ -19,11 +19,10 @@ const rest = new REST({ version: '9' }).setToken(process.env.BOT_TOKEN);
     try {
         console.log('Started refreshing application (/) commands.');
 
-        // The put method is used to fully refresh all commands in the guild with the current set
-        // You'll need to replace process.env.CLIENT_ID and process.env.GUILD_ID with your bot's client ID and your server's ID
-        // You can also use Routes.applicationCommands(process.env.CLIENT_ID) to register global commands
+        // The put method is used to fully refresh all global commands with the current set.
+        // Global commands may take up to an hour to update.
         await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands },
         );
 

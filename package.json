@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/bot.js",
+    "deploy": "node deploy-commands.js",
     "db:seed": "node src/db/seed.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
