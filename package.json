@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/bot.js",
     "deploy": "node deploy-commands.js",
+    "db:init": "node src/db/init.js",
     "db:seed": "node src/db/seed.js",
     "dev": "node src/bot.js",
     "logs": "railway logs",
